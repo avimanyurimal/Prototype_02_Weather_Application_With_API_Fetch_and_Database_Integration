@@ -19,6 +19,7 @@ const description = document.getElementById("description");
 const rainfall = document.getElementById("rainfall");
 
 const defaultCity = "Rochdale";
+let currentCity = defaultCity; // Variable to store the current city name
 
 // Function to display weather data
 function displayWeatherData(data) {
@@ -37,23 +38,30 @@ function displayWeatherData(data) {
     errorMessage.textContent = "";
 }
 
-// Function to fetch weather data and display
 function fetchAndDisplayWeather(city) {
-    fetchWeatherData(city)
-        .then(data => {
-            displayWeatherData(data);
-            saveWeatherDataToDatabase(city, data)
-                .then(response => {
-                    console.log(response);
-                })
-                .catch(error => {
-                    console.error(error);
-                });
-        })
-        .catch(error => {
-            errorMessage.textContent = error.message;
-            resultBox.style.display = "none";
-        });
+    currentCity = city; // Update the current city
+    const localStorageData = JSON.parse(localStorage.getItem(city));
+
+    if (localStorageData) {
+        displayWeatherData(localStorageData);
+    } else {
+        fetchWeatherData(city)
+            .then(data => {
+                displayWeatherData(data);
+                localStorage.setItem(city, JSON.stringify(data));
+                saveWeatherDataToDatabase(city, data)
+                    .then(response => {
+                        console.log(response);
+                    })
+                    .catch(error => {
+                        console.error(error);
+                    });
+            })
+            .catch(error => {
+                errorMessage.textContent = error.message;
+                resultBox.style.display = "none";
+            });
+    }
 }
 
 // Function to load default city weather data on page load
@@ -112,91 +120,20 @@ function fetchWeatherData(city) {
 
 // Event listener for "Show Past Data" button
 pastDataButton.addEventListener("click", () => {
-    const searchedCity = cityInput.value.trim();
-    if (searchedCity || defaultCity) {
-        const cityToShow = searchedCity || defaultCity;
-        fetchAndDisplayPastData(cityToShow);
-    } else {
-        errorMessage.textContent = "Please enter a city name to retrieve past data.";
-    }
+    pastDataContainer.innerHTML = "Loading past data...";
+
+    fetch(`past.php?city=${currentCity}`)
+        .then(response => response.text())
+        .then(data => {
+            pastDataContainer.innerHTML = data;
+        })
+        .catch(error => {
+            pastDataContainer.innerHTML = "Error loading past data.";
+        });
 });
 
 // Load default city weather data and past data on page load
 window.addEventListener("load", () => {
     loadDefaultCityWeather();
+    // You might want to add more initialization or event listeners here
 });
-
-// Function to fetch and display past data
-function fetchAndDisplayPastData(city) {
-    let pastDataContainer = document.querySelector(".past-data");
-    pastDataContainer.innerHTML = ""; // Clear previous data
-
-    if (city === "") {
-        city = defaultCity;
-    }
-
-    fetch(`past.php?city=${city}`)
-        .then(response => response.json())
-        .then(data => {
-            const currentDate = new Date();
-            const sixDaysAgo = new Date(currentDate);
-            sixDaysAgo.setDate(currentDate.getDate() - 6);
-
-            let filteredData = [];
-            for (let i = 0; i < 6; i++) {
-                const targetDate = new Date(sixDaysAgo);
-                targetDate.setDate(sixDaysAgo.getDate() + i);
-                const matchingEntry = data.find(entry => isSameDate(new Date(entry.date), targetDate));
-
-                if (matchingEntry) {
-                    filteredData.push(matchingEntry);
-                } else {
-                    filteredData.push({
-                        city: city,
-                        temperature: "N/A",
-                        humidity: "N/A",
-                        pressure: "N/A",
-                        wind: "N/A",
-                        description: "No data available",
-                        date: targetDate.toISOString()
-                    });
-                }
-            }
-
-            if (filteredData.length === 0) {
-                pastDataContainer.innerHTML = `No past weather data available for ${city} in the last 7 days.`;
-            } else {
-                filteredData.forEach(entry => {
-                    const formattedDate = new Date(entry.date).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric"
-                    });
-
-                    pastDataContainer.innerHTML += `
-              <div class='past-weather-box'>
-                <h3>Past Weather Data for ${entry.city} on ${formattedDate}</h3>
-                <p>Temperature: ${entry.temperature} &#8451;</p>
-                <p>Humidity: ${entry.humidity}%</p>
-                <p>Pressure: ${entry.pressure} hPa</p>
-                <p>Wind Speed: ${entry.wind} m/s</p>
-                <p>Description: ${entry.description}</p>
-              </div>
-            `;
-                });
-            }
-        })
-        .catch(error => {
-            pastDataContainer.innerHTML = `Error loading past data for ${city}.`;
-        });
-}
-
-// Function to check if two dates are the same
-function isSameDate(date1, date2) {
-    return (
-        date1.getFullYear() === date2.getFullYear() &&
-        date1.getMonth() === date2.getMonth() &&
-        date1.getDate() === date2.getDate()
-    );
-}
